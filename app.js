@@ -5,6 +5,7 @@ const $=id=>document.getElementById(id);const fmt=(v,d=3)=>Number(v).toLocaleStr
 function areaFactor(p){return polygonArea(p.shape==='custom'?p.profile:RECTANGLE)}
 function dimensionBounds(m,p,k){
  const c=configs[m].find(c=>c[0]===k);let min=c[2],max=c[3];
+ if(m==='m'&&p.shape==='custom'&&(k==='b'||k==='y'))return [Math.min(.01,p[k]/10),Math.max(c[3],p[k]*2)];
  if(m==='m'&&p.fixedArea!==null){const product=p.fixedArea/areaFactor(p);if(k==='b'){min=Math.max(min,product/3);max=Math.min(max,product/.1)}if(k==='y'){min=Math.max(min,product/8);max=Math.min(max,product/.5)}}
  if(m==='w'&&p.fixedTotal!==null){if(k==='h'){min=Math.max(min,p.fixedTotal-3);max=Math.min(max,p.fixedTotal-.2)}if(k==='z'){min=Math.max(min,p.fixedTotal-2);max=Math.min(max,p.fixedTotal-.05)}}
  if(Math.abs(max-min)<1e-10)max=min;
@@ -15,10 +16,11 @@ function enforceConstraint(m,p,changed=[]){
  const near=(a,b)=>Math.abs(a-b)<=1e-9*Math.max(1,Math.abs(b));
  if(m==='m'&&p.fixedArea!==null){
   const factor=areaFactor(p),target=p.fixedArea,product=target/factor;
-  if(!Number.isFinite(target)||target<factor*.05-1e-10||target>factor*24+1e-10)throw Error(`This outline allows a fixed area from ${fmt(factor*.05,4)} to ${fmt(factor*24,4)} m² within the width/depth limits.`);
+  if(!Number.isFinite(target)||target<=0||(p.shape!=='custom'&&(target<factor*.05-1e-10||target>factor*24+1e-10)))throw Error(`This outline allows a fixed area from ${fmt(factor*.05,4)} to ${fmt(factor*24,4)} m² within the width/depth limits.`);
   if(changed.includes('b')&&changed.includes('y')){if(!near(p.b*p.y,product))throw Error('These dimensions do not match the fixed area. Change only width or depth, or release the area lock.');}
   else if(changed.includes('y'))p.b=product/p.y;
   else if(changed.includes('b'))p.y=product/p.b;
+  else if(p.shape==='custom'){const scale=Math.sqrt(target/sectionGeometry(p).a);p.b*=scale;p.y*=scale}
   else{p.b=Math.max(Math.max(.5,product/3),Math.min(Math.min(8,product/.1),p.b));p.y=product/p.b}
  }
  if(m==='w'&&p.fixedTotal!==null){
@@ -27,7 +29,7 @@ function enforceConstraint(m,p,changed=[]){
   else if(changed.includes('z'))p.h=total-p.z;
   else{if(!changed.includes('h'))p.h=Math.max(Math.max(.05,total-3),Math.min(Math.min(2,total-.2),p.h));p.z=total-p.h}
  }
- for(const [key,label,min,max] of configs[m])if(!Number.isFinite(p[key])||p[key]<min-1e-9||p[key]>max+1e-9)throw Error(`${label} would exceed its allowed range. Choose a different value or release the lock.`);
+ for(const [key,label,min,max] of configs[m])if(!Number.isFinite(p[key])||(m==='m'&&p.shape==='custom'&&(key==='b'||key==='y')?p[key]<=0:p[key]<min-1e-9||p[key]>max+1e-9))throw Error(`${label} would exceed its allowed range. Choose a different value or release the lock.`);
  return p;
 }
 function commitFlowState(m,next){if(m==='m'&&JSON.stringify(next.profile)===JSON.stringify(states[m].profile))next.profile=states[m].profile;Object.assign(states[m],next)}
@@ -35,12 +37,12 @@ function lockError(message=''){if($('lockError'))$('lockError').textContent=mess
 function syncControlValues(){
  const p=states[mode];for(const [k]of configs[mode]){const [min,max]=dimensionBounds(mode,p,k);for(const id of [k,'num-'+k]){const el=$(id);if(!el)continue;el.min=min;el.max=max;el.step='any';if(document.activeElement!==el||el.type!=='number')el.value=Number(p[k].toPrecision(12));el.setCustomValidity('')}const ends=$(k)?.parentElement.querySelector('.ends');if(ends){ends.children[0].textContent=fmt(min,3);ends.children[1].textContent=fmt(max,3)}}
  const fixed=mode==='m'?p.fixedArea:p.fixedTotal;
- if($('fixValue')){$('fixValue').checked=fixed!==null;$('fixedTarget').disabled=fixed===null;$('fixedTarget').setCustomValidity('');$('fixedTarget').value=Number((fixed??(mode==='m'?sectionGeometry(p).a:p.h+p.z)).toPrecision(12));const lo=mode==='m'?areaFactor(p)*.05:.25,hi=mode==='m'?areaFactor(p)*24:5;$('fixedTarget').min=lo;$('fixedTarget').max=hi}
+ if($('fixValue')){$('fixValue').checked=fixed!==null;$('fixedTarget').disabled=fixed===null;$('fixedTarget').setCustomValidity('');$('fixedTarget').value=Number((fixed??(mode==='m'?sectionGeometry(p).a:p.h+p.z)).toPrecision(12));const lo=mode==='m'?(p.shape==='custom'?Number.MIN_VALUE:areaFactor(p)*.05):.25,hi=mode==='m'?(p.shape==='custom'?Infinity:areaFactor(p)*24):5;$('fixedTarget').min=lo;if(Number.isFinite(hi))$('fixedTarget').max=hi;else $('fixedTarget').removeAttribute('max')}
 }
 function controls(){
  const p=states[mode];
  const choices=mode==='m'?`<div class="control"><label for="material">Channel material</label><select id="material" class="full-select">${Object.entries(MATERIALS).map(([id,m])=>`<option value="${id}" ${p.material===id?'selected':''}>${m.label}</option>`).join('')}</select><div id="roughnessInfo" class="material-note"></div></div><div class="control"><label for="sectionShape">Cross-section</label><select id="sectionShape" class="full-select"><option value="rectangle" ${p.shape==='rectangle'?'selected':''}>Rectangular</option><option value="custom" ${p.shape==='custom'?'selected':''}>Draw by hand</option></select><p class="material-note">For a drawn section, width and maximum depth scale the entire wetted outline.</p></div>`:'';
- const constraint=`<div class="constraint-box"><label class="constraint-toggle"><input type="checkbox" id="fixValue"> ${mode==='m'?'Fix cross-section area A':'Fix total height H + Z'}</label><div class="constraint-target"><label for="fixedTarget">${mode==='m'?'Area A':'H + Z'}</label><input id="fixedTarget" type="number" step="any"><span>${mode==='m'?'m²':'m'}</span></div><p>${mode==='m'?'Width and depth adjust together. A new drawing adjusts depth, and width if needed, to preserve the area.':'Changing H adjusts Z, and vice versa. The H/Z validity limit still applies.'}</p><div id="lockError" role="status"></div></div>`;
+ const constraint=`<div class="constraint-box"><label class="constraint-toggle"><input type="checkbox" id="fixValue"> ${mode==='m'?'Fix cross-section area A':'Fix total height H + Z'}</label><div class="constraint-target"><label for="fixedTarget">${mode==='m'?'Area A':'H + Z'}</label><input id="fixedTarget" type="number" step="any"><span>${mode==='m'?'m²':'m'}</span></div><p>${mode==='m'?'Width and depth adjust together. A new drawing scales evenly to preserve area and the proportions you draw.':'Changing H adjusts Z, and vice versa. The H/Z validity limit still applies.'}</p><div id="lockError" role="status"></div></div>`;
  $('inputs').innerHTML=choices+constraint+configs[mode].map(([k,label,min,max,step,unit])=>`<div class="control"><div class="labelrow"><label for="${k}"><em>${k==='h'?'H':k==='z'?'Z':k==='s'?'S₀':k}</em>${label}</label><div class="value"><input aria-label="${label} value" type="number" id="num-${k}" min="${min}" max="${max}" step="any" value="${p[k]}">${unit}</div></div><input id="${k}" type="range" min="${min}" max="${max}" step="any" value="${p[k]}"><div class="ends"><span>${min}</span><span>${max} ${unit}</span></div></div>`).join('');
  configs[mode].forEach(([k])=>{for(const id of [k,'num-'+k])$(id).addEventListener('input',e=>{const [min,max]=dimensionBounds(mode,p,k),v=Number(e.target.value);try{if(e.target.value===''||!Number.isFinite(v)||v<min-1e-9||v>max+1e-9)throw Error(`Enter a value from ${fmt(min,6)} to ${fmt(max,6)}.`);const next=structuredClone(p);next[k]=v;enforceConstraint(mode,next,[k]);commitFlowState(mode,next);lockError();render()}catch(error){e.target.setCustomValidity(error.message);lockError(error.message)}})});
  $('fixValue').onchange=e=>{const next=structuredClone(p);if(mode==='m')next.fixedArea=e.target.checked?sectionGeometry(p).a:null;else next.fixedTotal=e.target.checked?p.h+p.z:null;commitFlowState(mode,enforceConstraint(mode,next));lockError();render()};
@@ -65,7 +67,7 @@ document.querySelectorAll('[data-mode]').forEach(b=>{b.onclick=()=>setMode(b.dat
 function configureFlow(input){
  if(!input||!configs[input.equation]||!input.parameters||typeof input.parameters!=='object')throw Error('Invalid equation or parameters');
  const m=input.equation,next=structuredClone(states[m]);
- for(const [k,v] of Object.entries(input.parameters)){const c=configs[m].find(c=>c[0]===k);if(!c||!Number.isFinite(v)||v<c[2]-1e-9||v>c[3]+1e-9)throw Error('Invalid parameter '+k);next[k]=v}
+ for(const [k,v] of Object.entries(input.parameters)){const c=configs[m].find(c=>c[0]===k);if(!c||!Number.isFinite(v))throw Error('Invalid parameter '+k);next[k]=v}
  if(input.material!==undefined){if(m!=='m'||!Object.hasOwn(MATERIALS,input.material))throw Error('Invalid channel material');next.material=input.material;next.n=MATERIALS[input.material].n}
  if(m==='m'&&(input.section==='custom'||input.points!==undefined)&&input.fixedArea===undefined&&next.fixedArea===null)next.fixedArea=sectionGeometry(states.m).a;
  if(input.section!==undefined){if(m!=='m'||!['rectangle','custom'].includes(input.section))throw Error('Invalid section');next.shape=input.section}

@@ -61,13 +61,13 @@ function renderPhysics(){
  scene.setAttribute('viewBox','0 0 780 330');
  let svg=defs,tracks=[];
  if(mode==='m'){
-   const scale=27.5,length=12,depth=p.y*scale,start=35,end=start+length*scale,bed=235,drop=length*p.s*scale;
+   const length=12,scale=Math.min(27.5,135/p.y),depth=p.y*scale,start=35,end=start+length*scale,bed=235,drop=length*p.s*scale;
    svg+=`<text x="32" y="34">12 m CHANNEL REACH</text><path d="M${start} ${bed-depth}L${end} ${bed+drop-depth}V${bed+drop}L${start} ${bed}Z" fill="url(#water)"/><path d="M${start} ${bed}L${end} ${bed+drop}" stroke="#285b61" stroke-width="4"/><path d="M${start} ${bed-depth}L${end} ${bed+drop-depth}" stroke="#2294a3" stroke-width="2"/><text x="40" y="90">V = Q/A = ${fmt(r.v,2)} m/s →</text><text x="40" y="113">Steady depth · parallel surface and bed</text>`;
    for(const fraction of [.2,.5,.8])tracks.push({count:13,stationary:r.v===0,duration:r.v===0?1:length*Math.hypot(1,p.s)/r.v,radius:Math.min(2.2,Math.max(.7,depth/10)),at(t){const x=r.v===0?t*length:r.v*t/Math.hypot(1,p.s);return point(start+x*scale,bed-depth*fraction+x*p.s*scale)}});
    svg+=dim(start,281,end,281,'12 m',183,306);
    const sectionScale=Math.min(250/p.b,153/p.y),left=574-p.b*sectionScale/2,right=574+p.b*sectionScale/2,top=241-p.y*sectionScale;
    const outline=sectionGeometry(p).points.map(v=>point(left+v[0]*p.b*sectionScale,top+v[1]*p.y*sectionScale));
-   svg+=`<text x="440" y="34">${p.shape==='custom'?'HAND-DRAWN':'RECTANGULAR'} CROSS SECTION</text><path d="${pathOf(outline)}Z" fill="url(#water)"/><path d="${pathOf(outline)}" fill="none" stroke="#285b61" stroke-width="4" stroke-linejoin="round"/><path d="M${left} ${top}H${right}" stroke="#2294a3" stroke-width="2"/><text x="448" y="62">A = ${fmt(r.a,2)} m² · P = ${fmt(r.per,2)} m</text>`;
+   svg+=`<text x="440" y="34">${p.shape==='custom'?'HAND-DRAWN':'RECTANGULAR'} CROSS SECTION</text><path d="${pathOf(outline)}Z" fill="url(#water)"/><path d="${pathOf(outline)}" fill="none" stroke="#285b61" stroke-width="4" stroke-linejoin="round"/><path d="M${outline[0].x} ${top}H${outline.at(-1).x}" stroke="#2294a3" stroke-width="2"/><text x="448" y="62">A = ${fmt(r.a,2)} m² · P = ${fmt(r.per,2)} m</text>`;
    svg+=dim(left,281,right,281,`b = ${fmt(p.b,1)} m`,530,306)+dim(right+18,top,right+18,241,'y',right+27,(top+241)/2);
    $('motionStatus').textContent=r.v===0?'Zero slope · no uniform flow':`12 m transit: ${fmt(length*Math.hypot(1,p.s)/r.v,1)} s`;
    modelNote.textContent='Particles move at the calculated depth-averaged velocity V = Q/A. The side view uses equal horizontal and vertical scales; cross section is enlarged separately. Near-wall shear and turbulence are not resolved.';

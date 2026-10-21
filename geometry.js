@@ -22,11 +22,11 @@ function validateSection(points){
  if(!Array.isArray(points)||points.length<3||points.length>500)throw Error('Draw banks and a bed using 3 to 500 points.');
  if(points.some(p=>!Array.isArray(p)||p.length!==2||p.some(v=>!Number.isFinite(v)||v<0||v>1)))throw Error('Keep the outline inside the drawing area.');
  const a=points[0],b=points[points.length-1];
- if(a[0]!==0||a[1]!==0||b[0]!==1||b[1]!==0)throw Error('The outline must connect the left and right waterline markers.');
+ if(a[1]!==0||b[1]!==0||a[0]>=b[0])throw Error('Draw from the left waterline to the right waterline.');
  if(points.slice(1,-1).some(p=>p[1]<.00001))throw Error('Keep the bed below the waterline; use one connected section.');
  for(let i=1;i<points.length;i++)if(Math.hypot(points[i][0]-points[i-1][0],points[i][1]-points[i-1][1])<1e-7)throw Error('Remove duplicate adjacent points.');
  const n=points.length;for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){if(j===i+1||(i===0&&j===n-1))continue;if(crossing(points[i],points[(i+1)%n],points[j],points[(j+1)%n]))throw Error('The outline crosses or touches itself. Draw one open basin without loops or islands.');}
- if(polygonArea(points)<.005)throw Error('Draw a deeper section with a visible enclosed area.');
+ if(polygonArea(points)<1e-10)throw Error('Draw banks and a bed with a visible enclosed area.');
  const maxDepth=Math.max(...points.map(p=>p[1]));return points.map(p=>[p[0],p[1]/maxDepth]);
 }
 // Remove sub-pixel hand jitter without replacing the drawn outline with a preset.
